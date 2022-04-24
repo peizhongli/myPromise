@@ -9,9 +9,33 @@ class MyPromise {
         this._onFulfilledCallbacks = []
         this._onRejectedCallbacks = []
         try {
-            executor(this.resolve.bind(this), this.reject.bind(this))
+            executor(this._resolve.bind(this), this._reject.bind(this))
         } catch (error) {
             this.reject(error)
+        }
+    }
+
+    _resolve(result) {
+        if (this._state === MyPromise.PENDING) {
+            setTimeout(() => {
+                this._state = MyPromise.FULFILLED
+                this._result = result
+                this._onFulfilledCallbacks.forEach(callback => {
+                    callback(result)
+                })
+            });
+        }
+    }
+
+    _reject(reason) {
+        if (this._state === MyPromise.PENDING) {
+            setTimeout(() => {
+                this._state = MyPromise.REJECTED
+                this._result = reason
+                this._onRejectedCallbacks.forEach(callback => {
+                    callback(reason)
+                })
+            });
         }
     }
 
@@ -63,50 +87,67 @@ class MyPromise {
         return promise2
     }
 
-    catch () {
-
-    } finally() {
-
+    catch (onRejected) {
+        return this.then(null, onRejected)
     }
 
-    all() {
-
+    finally(callback) {
+        return this.then(callback, callback)
     }
 
-    race() {
-
-    }
-
-    allSettled() {
-
-    }
-
-    any() {
-
-    }
-
-    resolve(result) {
-        if (this._state === MyPromise.PENDING) {
-            setTimeout(() => {
-                this._state = MyPromise.FULFILLED
-                this._result = result
-                this._onFulfilledCallbacks.forEach(callback => {
-                    callback(result)
-                })
-            });
+    static resolve(value) {
+        if (value instanceof MyPromise) {
+            return value
         }
+        else if (value instanceof Object && 'then' in value) {
+            return new MyPromise((resolve, reject) => {
+                value.then(resolve, reject)
+            })
+        }
+        return new MyPromise(resolve => resolve(value))
     }
 
-    reject(reason) {
-        if (this._state === MyPromise.PENDING) {
-            setTimeout(() => {
-                this._state = MyPromise.REJECTED
-                this._result = reason
-                this._onRejectedCallbacks.forEach(callback => {
-                    callback(reason)
+    static reject(reason) {
+        return new MyPromise((_, reject) => reject(reason))
+    }
+
+    static all(promises) {
+        return new MyPromise((resolve, reject) => {
+            if (Array.isArray(promises)) {
+                let result = []
+                let count = 0
+                if(promises.length === 0) {
+                    return resolve(promises)
+                }
+                promises.forEach((p, index) => {
+                    MyPromise.resolve(p).then(
+                        value => {
+                            count ++
+                            result[index] = value
+                            count === promises.length && resolve(result)
+                        },
+                        reason => {
+                            reject(reason)
+                        }
+                    )
                 })
-            });
-        }
+            } 
+            else {
+                return reject(new Error('Argument is not iterable'))
+            }
+        })
+    }
+
+    static race() {
+
+    }
+
+    static allSettled() {
+
+    }
+
+    static any() {
+
     }
 
     // 提案
@@ -132,13 +173,8 @@ function resolvePromise(promise2, x, resolve, reject) {
             reject(x._result)
         }
     } else if (x !== null && (typeof x === 'object' || typeof x === 'function')) {
-        let then = null
         try {
-            then = x.then
-        } catch (error) {
-            reject(error)
-        }
-        try {
+            let then = x.then
             if (typeof then !== 'function') {
                 resolve(x)
             } else {
